@@ -6,8 +6,6 @@
 # associated contacts to another existing roundcube DB
 # Author: Alexander Friess 06-02-2016
 
-# !!! Multihost support not yet implemented!
-
 use strict;
 use warnings;
 
@@ -18,7 +16,7 @@ use DBI;
   GetOptions(
       'help|h!'            => \$opts->{Help},
       'source-host|host=s' => \$opts->{SourceHost},
-#      'target-host=s'      => \$opts->{TargetHost},
+      'target-host=s'      => \$opts->{TargetHost},
       'source-db|db=s'     => \$opts->{SourceDb},
       'target-db=s'        => \$opts->{TargetDb},
       'source-user|user=s' => \$opts->{SourceUser},
@@ -35,19 +33,21 @@ use DBI;
 
   my $dsn_source = "DBI:mysql:host=$opts->{SourceHost};database=$opts->{SourceDb};port=3306;user=$opts->{SourceUser};password=$opts->{SourcePass}";
   my $dbh_source = DBI->connect( $dsn_source, { RaiseError => 0, PrintError => 0, } );
+  my $dsn_target;
+  my $dbh_target;
 
   if ( !$dbh_source ) { die("Could not connect to Source DB!\n"); }
   else { print "Connected to Source DB\n"; }
 
   if ( $opts->{SourceHost} ne $opts->{TargetHost} ) {
-    my $dsn_target = "DBI:mysql:host=$opts->{TargetHost};database=$opts->{TargetDb};port=3306;user=roundcube;password=roundcube";
-    my $dbh_target = DBI->connect( $dsn_target, { RaiseError => 0, PrintError => 0, } );
+    $dsn_target = "DBI:mysql:host=$opts->{TargetHost};database=$opts->{TargetDb};port=3306;user=roundcube;password=roundcube";
+    $dbh_target = DBI->connect( $dsn_target, { RaiseError => 0, PrintError => 0, } );
 
     if ( !$dbh_target ) { die("Could not connect to Target DB!\n"); }
     else { print "Connected to Target DB\n"; }
   }
   else {
-#    $dbh_target = $dbh_source;
+    $dbh_target = $dbh_source;
   }
 
   my $sql_users = 'SELECT * FROM `' . $opts->{SourceDb} . '`.users';
@@ -55,13 +55,13 @@ use DBI;
   my $sth_users = $dbh_source->prepare($sql_users);
 
   my $sql_new_user = 'INSERT INTO `' . $opts->{TargetDb} . '`.users (username,mail_host,alias,created,last_login,language,preferences) VALUES(?,?,?,?,?,?,?)';
-  my $sth_new_user = $dbh_source->prepare($sql_new_user);
+  my $sth_new_user = $dbh_target->prepare($sql_new_user);
 
   my $sql_contacts = 'SELECT * FROM `' . $opts->{SourceDb} . '`.contacts WHERE user_id = ?';
   my $sth_contacts = $dbh_source->prepare($sql_contacts);
 
   my $sql_new_contact = 'INSERT INTO `' . $opts->{TargetDb} . '`.contacts (changed,del,name,email,firstname,surname,vcard,words,user_id) VALUES(?,?,?,?,?,?,?,?,?)';
-  my $sth_new_contact = $dbh_source->prepare($sql_new_contact);
+  my $sth_new_contact = $dbh_target->prepare($sql_new_contact);
 
   #Read Source Users:
   $sth_users->execute();
@@ -88,9 +88,10 @@ use DBI;
       print "  Contact: $name\n";
       $sth_new_contact->finish();
     }
+
   $sth_new_user->finish();
   }
 
 $dbh_source->disconnect();
-#$dbh_target->disconnect();
+$dbh_target->disconnect();
 
